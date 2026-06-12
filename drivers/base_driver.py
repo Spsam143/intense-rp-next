@@ -1094,6 +1094,12 @@ class BaseDriver(ABC):
                     f"{browser_context_options['timezone_id']}"
                 )
 
+            launch_options = {
+                "headless": False,
+                "args": ["--disable-blink-features=AutomationControlled"],
+                "ignore_default_args": ["--enable-automation"],
+            }
+
             if persistent_sessions:
                 user_data_dir = self._get_persistent_profile_dir()
                 Logger.info("Launching Chromium (Persistent Sessions enabled)...")
@@ -1105,7 +1111,7 @@ class BaseDriver(ABC):
                     os.makedirs(user_data_dir, exist_ok=True)
                     self.context = await self.playwright.chromium.launch_persistent_context(
                         user_data_dir,
-                        headless=False,
+                        **launch_options,
                         **browser_context_options,
                     )
                     context_browser = getattr(self.context, "browser", None)
@@ -1113,12 +1119,19 @@ class BaseDriver(ABC):
                 except Exception as e:
                     Logger.error(f"Failed to launch persistent context: {e}")
                     Logger.warning("Falling back to non-persistent session...")
-                    self.browser = await self.playwright.chromium.launch(headless=False)
+                    self.browser = await self.playwright.chromium.launch(**launch_options)
                     self.context = await self.browser.new_context(**browser_context_options)
             else:
                 Logger.info("Launching Chromium...")
-                self.browser = await self.playwright.chromium.launch(headless=False)
+                self.browser = await self.playwright.chromium.launch(**launch_options)
                 self.context = await self.browser.new_context(**browser_context_options)
+
+            try:
+                await self.context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                )
+            except Exception as e:
+                Logger.debug(f"Failed to inject webdriver init script: {e}")
 
             try:
                 pages = getattr(self.context, "pages", [])
