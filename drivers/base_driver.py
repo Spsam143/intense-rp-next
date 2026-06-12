@@ -1127,11 +1127,46 @@ class BaseDriver(ABC):
                 self.context = await self.browser.new_context(**browser_context_options)
 
             try:
-                await self.context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-                )
+                stealth_script = """
+// Pass the Webdriver test
+Object.defineProperty(navigator, 'webdriver', {
+  get: () => undefined,
+});
+
+// Pass the Chrome Test
+if (!window.chrome) {
+  Object.defineProperty(window, 'chrome', {
+    get: () => ({ runtime: {} }),
+  });
+}
+
+// Pass the Permissions Test
+const originalQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) => (
+  parameters.name === 'notifications' ?
+    Promise.resolve({ state: Notification.permission }) :
+    originalQuery(parameters)
+);
+
+// Pass the Plugins Length Test
+Object.defineProperty(navigator, 'plugins', {
+  get: () => {
+    const FakePluginArray = function() {};
+    FakePluginArray.prototype = PluginArray.prototype;
+    const plugins = new FakePluginArray();
+    plugins.length = 3;
+    return plugins;
+  },
+});
+
+// Pass the Languages Test
+Object.defineProperty(navigator, 'languages', {
+  get: () => ['en-US', 'en'],
+});
+"""
+                await self.context.add_init_script(stealth_script)
             except Exception as e:
-                Logger.debug(f"Failed to inject webdriver init script: {e}")
+                Logger.debug(f"Failed to inject stealth init script: {e}")
 
             try:
                 pages = getattr(self.context, "pages", [])
